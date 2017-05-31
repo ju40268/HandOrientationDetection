@@ -14,6 +14,7 @@ from sklearn.cluster import KMeans
 import itertools
 from scipy import misc
 from scipy import ndimage
+import csv
 
 
 # -----------------------------------------------------------------
@@ -54,7 +55,6 @@ def preprocess_data_offline(data_numeric_temp, num_frame, group_len):
 
 
 def save_img(img, index, filename):
-    # type: (input image to save, iteration index, input filename) -> return nothing, just save image
     plt.imshow(img)
     plt.axis('off')
     # plt.savefig(str(index)+".gif",bbox_inches='tight', pad_inches=0)
@@ -65,35 +65,30 @@ def save_img(img, index, filename):
 # -----------------------------------------------------------------
 def preprocess_data_online(data_numeric, num_frame, filename, touchpad_center):
     flat_data = []
-    for i in range(1, len(data_numeric) - 1):
+    angle_list = []
+    for i in range(1, len(data_numeric)):
         flat_data.append(cut_tail(data_numeric[i]) - cut_tail(data_numeric[0]))
     print 'len for flat data', len(flat_data)
-    for i in range(len(data_numeric) - 2):
+    for i in range(len(data_numeric)-1):
         scaled_list = preprocessing.scale(flat_data[i])
         remove_glitch = [
             np.mean(scaled_list) if x > np.mean(scaled_list) + np.std(scaled_list) or x < np.mean(scaled_list) - np.std(
                 scaled_list) else x for x in scaled_list]
         # blurring the image --> better image output
         blurred_img = ndimage.gaussian_filter(remove_glitch, sigma=0.8)
-        save_img(np.transpose(np.flipud(blurred_img)).reshape(23, 28), i, filename)
+        #save_img(np.transpose(np.flipud(blurred_img)).reshape(23, 28), i, filename)
         filtered = [0 if x < np.mean(blurred_img) - np.std(blurred_img) else 1 for x in blurred_img]
         greyscale = np.transpose(np.flipud(filtered)).reshape(23, 28)
-        print 'Gaussian 1D Blur'
+        #print 'Gaussian 1D Blur'
         # plt.imshow(greyscale)
         # plt.show()
         points = threshold(greyscale)
         num_cluster = 5
         kmeans_centroids = kmeans_clustering(points)
         final_angle = calculate_vector(kmeans_centroids, num_cluster, touchpad_center)
-        print final_angle
-        # print final_angle
-    # also write the numeric data into files continuously
-    '''
-   with open('numeric_output.txt', 'w+') as f:
-     f.write(str(greyscale_img))
-   f.close()
-   '''
-
+        angle_list.append(final_angle)
+        #print final_angle
+    return angle_list
 
 # -----------------------------------------------------------------
 # TODO: find better threshold for each
@@ -110,14 +105,24 @@ def threshold(threshold_output):
 
 # -----------------------------------------------------------------
 # TODO: skipped the timestamp header, neeeeed to keep it
-def parse_data(df, num_frame, line_num, header_padding):
-    temp = []
+def parse_data(df, line_num, header_padding):
+    frame_line = []
     # skip the first line for command 00 31 00 --> +2
+    starting_point = line_num[header_padding]
+    ending_point = line_num[-2]
+
+    print 'starting point: ', starting_point
+    print 'ending point:', ending_point
+
+    print line_num
+    num_frame = (len(line_num) - header_padding)/2 - 1 # still skip the final frame in case not complete
     for i in range(num_frame):
         skipheader = line_num[header_padding + i * 2]
-        data = df.iloc[skipheader + 2:skipheader + 164:2]
-        temp.append(data.apply(lambda x: x.astype(str).map(lambda x: int(x, base=16))).as_matrix())
-    return temp
+        data = df.iloc[skipheader + 2 : skipheader + 164 : 2]
+        frame_line.append(data.apply(lambda x: x.astype(str).map(lambda x: int(x, base=16))).as_matrix())
+
+
+    return  frame_line, num_frame, starting_point, ending_point
 
 
 # ------------------------------------------------------------------
@@ -127,7 +132,6 @@ def blocks(files, size=65536):
         if not b: break
         yield b
 
-
 # -----------------------------------------------------------------
 def read_file(filename, lookup):
     line_num = []
@@ -136,9 +140,12 @@ def read_file(filename, lookup):
         for num, line in enumerate(outputfile, 1):
             if lookup in line:
                 line_num.append(num)
+    '''
     with open(filename, "r") as f:
         total_line_num = sum(bl.count("\n") for bl in blocks(f))
-    return pd.read_csv(filename, delim_whitespace=True, header=None, usecols=range(7, 23, 2)), line_num
+    '''
+
+    return pd.read_csv(filename, delim_whitespace=True, header=None, usecols=range(2)), pd.read_csv(filename, delim_whitespace=True, header=None, usecols=range(7, 23, 2)), line_num
 
 
 # -----------------------------------------------------------------
@@ -170,7 +177,7 @@ def calculate_vector(kmeans_centroids, num_cluster, touchpad_center):
     all_comb = list(itertools.combinations(range(num_cluster), 2))
     for i, j in all_comb:
         degree.append(np.degrees(angle_between(relative_vector[i], relative_vector[j])))
-    print all_comb[degree.index(max(degree))]
+    # print all_comb[degree.index(max(degree))]
     # ----------- might have error------------------
     index = sorted(list(all_comb[degree.index(max(degree))]), reverse=True)
 
@@ -181,6 +188,22 @@ def calculate_vector(kmeans_centroids, num_cluster, touchpad_center):
     final_angle = angle_between(positive_x_axis, final_direction)
     return np.degrees(final_angle)
 
+#------------------------------------------------------------------
+def write_angle(slice_timestamp, angle_list):
+    #time_stamp_record.to_csv('output.csv', sep='\t', encoding='utf-8', index=False, header=T)
+    repitition_angle = []
+    for i in angle_list:
+        repitition_angle.append([str(i)] * 164 + ['write command']*2)
+    angle_list = list(itertools.chain.from_iterable(repitition_angle))
+    timestampe_angle = zip(slice_timestamp, angle_list)
+
+    print timestampe_angle
+    timestampe_angle.to_csv('output.csv', sep='\t', encoding='utf-8', index=False)
+#------------------------------------------------------------------
+def escape_starting_point(starting_point, ending_point,time_stamp):
+    print 'escape starting point'
+    slice_time_stamp = time_stamp.iloc[starting_point+2:ending_point]
+    return slice_time_stamp.values.tolist()
 
 # -----------------------------------------------------------------
 # TODO: filter out the abnormal frames
@@ -196,9 +219,13 @@ def main_offline():
 
 # -----------------------------------------------------------------
 # TODO: filter out the abnormal frames
-def main_online(num_frame, header_padding, touchpad_center):
+def main_online(filename, header_padding, touchpad_center):
     # filename =  raw_input("input file name: ")
-    filename = os.path.abspath('hand_data/Output_5points')
-    df, line_num = read_file(filename + '.txt', '11 01 0A 0F 31 00 00 00 00')
-    data_numeric = parse_data(df, num_frame, line_num, header_padding)
-    preprocess_data_online(data_numeric, num_frame, filename, touchpad_center)
+    #filename = os.path.abspath('hand_data/Output_5points')
+    time_stamp, df, line_num = read_file(filename + '.txt', '11 01 0A 0F 31 00 00 00 00')
+    data_numeric, num_frame, starting_point, ending_point = parse_data(df, line_num, header_padding)
+    angle_list = preprocess_data_online(data_numeric, num_frame, filename, touchpad_center)
+    #print angle_list
+    slice_timestamp = escape_starting_point(starting_point, ending_point, time_stamp)
+    #print slice_timestamp
+    write_angle(slice_timestamp, angle_list)
