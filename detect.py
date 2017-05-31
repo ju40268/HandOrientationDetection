@@ -110,7 +110,6 @@ def parse_data(df, line_num, header_padding):
     # skip the first line for command 00 31 00 --> +2
     starting_point = line_num[header_padding]
     ending_point = line_num[-2]
-
     print 'starting point: ', starting_point
     print 'ending point:', ending_point
 
@@ -132,7 +131,7 @@ def blocks(files, size=65536):
         if not b: break
         yield b
 
-# -----------------------------------------------------------------
+# ------------------------------------------------------------------
 def read_file(filename, lookup):
     line_num = []
     total_line_num = 0
@@ -191,18 +190,26 @@ def calculate_vector(kmeans_centroids, num_cluster, touchpad_center):
 #------------------------------------------------------------------
 def write_angle(slice_timestamp, angle_list):
     #time_stamp_record.to_csv('output.csv', sep='\t', encoding='utf-8', index=False, header=T)
+    #print slice_timestamp
+    f = open("timestamp_angle.csv", "w")
+    w = csv.writer(f)
     repitition_angle = []
     for i in angle_list:
-        repitition_angle.append([str(i)] * 164 + ['write command']*2)
-    angle_list = list(itertools.chain.from_iterable(repitition_angle))
-    timestampe_angle = zip(slice_timestamp, angle_list)
+        repitition_angle.append( [str(i)] * 162 + ['write command']*2)
 
-    print timestampe_angle
-    timestampe_angle.to_csv('output.csv', sep='\t', encoding='utf-8', index=False)
+    angle_list = list(itertools.chain.from_iterable(repitition_angle))
+    print angle_list
+    [identity, timestamp] = zip(*slice_timestamp)
+
+    timestamp_angle = zip(identity, timestamp, angle_list)
+    w.writerows(timestamp_angle)
+    print timestamp_angle
+    f.close()
 #------------------------------------------------------------------
 def escape_starting_point(starting_point, ending_point,time_stamp):
     print 'escape starting point'
-    slice_time_stamp = time_stamp.iloc[starting_point+2:ending_point]
+    slice_time_stamp = time_stamp.iloc[starting_point+1:ending_point]
+    print slice_time_stamp
     return slice_time_stamp.values.tolist()
 
 # -----------------------------------------------------------------
@@ -216,6 +223,9 @@ def main_offline():
     final_angle = calculate_vector(kmeans_centroids)
     print final_angle
 
+def calculate_accuracy(angle_list):
+    print 'calculate accuracy'
+    #TODO: implement accuracy
 
 # -----------------------------------------------------------------
 # TODO: filter out the abnormal frames
@@ -225,7 +235,6 @@ def main_online(filename, header_padding, touchpad_center):
     time_stamp, df, line_num = read_file(filename + '.txt', '11 01 0A 0F 31 00 00 00 00')
     data_numeric, num_frame, starting_point, ending_point = parse_data(df, line_num, header_padding)
     angle_list = preprocess_data_online(data_numeric, num_frame, filename, touchpad_center)
-    #print angle_list
     slice_timestamp = escape_starting_point(starting_point, ending_point, time_stamp)
-    #print slice_timestamp
     write_angle(slice_timestamp, angle_list)
+    calculate_accuracy(angle_list)
