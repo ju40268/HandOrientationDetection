@@ -1,7 +1,8 @@
 import detect
 import os
+import file_operation
 
-# import test_module
+#import test_module
 # main function start here!
 '''
 TODO:
@@ -16,20 +17,9 @@ TODO:
 :param: left to be tuned.
 '''
 
-directory = 'C:/Users/cchen19/PycharmProjects/hand_orientation_detection/hand_raw_data'
-file_list = []
-for filename in os.listdir(directory):
-    if filename.endswith(".txt"):
-        # print(os.path.join(directory, filename))
-        file_list.append('hand_raw_data/' + filename)
-        continue
-    else:
-        continue
-
 if __name__ == "__main__":
-    for f in file_list:
-        print f
-        header_padding = 20
-        touchpad_center = [14, 13]
-        detect.main_online(f, header_padding, touchpad_center)
+    f = file_operation.pwd() + 'Output_white_noise.txt'
+    # file_operation.img_output()
+    #print 'Now processing with: ' + f
+    detect.main_online(f, header_padding=0, touchpad_center=[14, 13])
 
