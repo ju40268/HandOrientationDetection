@@ -7,16 +7,13 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import cv2
-from skimage import measure
 from sklearn import preprocessing
 from sklearn.cluster import KMeans
 import itertools
-from scipy import misc
 from scipy import ndimage
 import csv
 import file_operation
-
+import pickle
 
 # -----------------------------------------------------------------
 def cut_tail(sum_frame):
@@ -31,6 +28,13 @@ def cut_tail(sum_frame):
     remove_tail = flat_data[0][mask]
     return remove_tail
 
+#------------------------------------------------------------------
+def gen_white_noise():
+    #generate white noise frame as reference frame for every other to substract from
+    white_noise = np.random.normal(0.5, 0.5, size=644)
+    #ref_frame = np.transpose(np.flipud(white_noise).reshape(23, 28))
+    #save_img(ref_frame, 0, 'white_noise')
+    return white_noise
 
 # -----------------------------------------------------------------
 def preprocess_data_offline(data_numeric_temp, num_frame, group_len):
@@ -68,7 +72,7 @@ def save_img(img, index, filename):
 def save_csv(data_numeric, num_frame, filename):
     flat_data = []
     for i in range(1, len(data_numeric)):
-        flat_data.append(cut_tail(data_numeric[i]) - cut_tail(data_numeric[0]))
+        flat_data.append(cut_tail(data_numeric[i]) - load_ref())
     csv_dir = file_operation.data_output('csv')
 
     if not os.path.exists(csv_dir):
@@ -89,13 +93,30 @@ def save_csv(data_numeric, num_frame, filename):
     except IOError:
         print 'file still opening, in lock. Please close all the corresponding csv file'
 
+def save_pickle(obj):
+    pickle_dir = file_operation.data_output('pickle')
+    if not os.path.exists(pickle_dir):
+        print 'No reference pickle output directory, now creating one.'
+        os.makedirs(pickle_dir)
+    with open('ref.pickle', 'w') as f:  # Python 3: open(..., 'wb')
+        pickle.dump(obj, f)
+
+def load_ref(obj='ref.pickle'):
+    with open(obj) as f:  # Python 3: open(..., 'rb')
+        ref_lsit = pickle.load(f)
+        # print ref_lsit
+    return  ref_lsit
 
 # -----------------------------------------------------------------
 def preprocess_data_online(data_numeric, num_frame, filename, touchpad_center):
     flat_data = []
     angle_list = []
+    ref_list = load_ref()
+    # save_pickle(ref_list())
+    # for i in range(1, len(data_numeric)):
+    #     flat_data.append(cut_tail(data_numeric[i]) - cut_tail(data_numeric[0]))
     for i in range(1, len(data_numeric)):
-        flat_data.append(cut_tail(data_numeric[i]) - cut_tail(data_numeric[0]))
+        flat_data.append(cut_tail(data_numeric[i]) - ref_list)
     print 'len for flat data', len(flat_data)
     for i in range(len(data_numeric)-1):
         scaled_list = preprocessing.scale(flat_data[i])
@@ -143,18 +164,34 @@ def parse_data(df, line_num, header_padding):
     starting_point = line_num[header_padding]
     ending_point = line_num[-2]
     print 'starting point: ', starting_point
-    print 'ending point:', ending_point
-
+    print 'ending point: ', ending_point
+    '''
     print line_num
     num_frame = (len(line_num) - header_padding)/2 - 1 # still skip the final frame in case not complete
+    num_frame = 3
     for i in range(num_frame):
         try:
             skipheader = line_num[header_padding + i * 2]
             data = df.iloc[skipheader + 2 : skipheader + 164 : 2]
+            full_data = df.iloc[skipheader + 2: skipheader + 164]
+            print full_data
             frame_line.append(data.apply(lambda x: x.astype(str).map(lambda x: int(x, base=16))).as_matrix())
         except ValueError:
             print 'appear in NaN'
             print 'i', i
+    '''
+    num_frame = (len(line_num) - header_padding) / 2 - 1  # still skip the final frame in case not complete
+    for i in range(num_frame):
+        # dealing with NaN first, sanity check.
+        skipheader = line_num[header_padding + i * 2]
+        print 'now processing with starting point: ', skipheader
+        full_data = df.iloc[skipheader + 2: skipheader + 164]
+        if full_data.isnull().values.any():
+            print 'containing NaN in output signal at: ', skipheader
+            continue
+        else:
+            data = df.iloc[skipheader + 2: skipheader + 164: 2]
+            frame_line.append(data.apply(lambda x: x.astype(str).map(lambda x: int(x, base=16))).as_matrix())
 
     return  frame_line, num_frame, starting_point, ending_point
 
@@ -266,6 +303,11 @@ def calculate_accuracy(angle_list):
 # TODO: filter out the abnormal frames
 def main_online(filename, header_padding, touchpad_center):
     time_stamp, df, line_num = read_file(filename, '11 03 0A 0F 31 00 00 00 00')
+    if not line_num:
+        print 'list empty, try another lookup pattern'
+        time_stamp, df, line_num = read_file(filename, '11 01 0A 0F 31 00 00 00 00')
+
+    gen_white_noise()
     data_numeric, num_frame, starting_point, ending_point = parse_data(df, line_num, header_padding)
     save_csv(data_numeric, num_frame, filename)
     angle_list = preprocess_data_online(data_numeric, num_frame, filename, touchpad_center)

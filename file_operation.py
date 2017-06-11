@@ -22,13 +22,14 @@ def traverse():
 def remove(filename='Output.txt'):
     print 'removing files in Bazinga...'
     os.remove(destination+filename)
+
 def pwd():
     return destination
+
 def data_output(type):
     if type == 'img':
         return os.path.join(expanduser("~"), 'Desktop', 'Contour_output','img','')
-    else:
+    elif type == 'csv':
         return os.path.join(expanduser("~"), 'Desktop', 'Contour_output', 'csv','')
-def base_name():
-    head, tail = os.path.split(destination)
-    print tail
+    else:
+        return os.path.join(expanduser("~"), 'Desktop', 'Contour_output', 'ref_pickle','')
