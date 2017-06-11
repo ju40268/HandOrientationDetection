@@ -1,7 +1,7 @@
-import detect
+import preprocess
 import os
 import file_operation
-
+import detect
 #import test_module
 # main function start here!
 '''
@@ -21,8 +21,10 @@ if __name__ == "__main__":
     f = file_operation.pwd() + 'Output_tilt.txt'
     # file_operation.img_output()
     #print 'Now processing with: ' + f
-    detect.main_online(f, header_padding=0, touchpad_center=[14, 13])
+    filename, img_list, data_numeric, num_frame, header, time_stamp = preprocess.preprocess_online(f, header_padding=0, touchpad_center=[14, 13])
+    detect.detect_online(filename,img_list, data_numeric, num_frame, header, time_stamp)
     #---------------------------------------------------------------------------
+    # if traversing all the file
     '''
     # if traversing all the file
     f_list = file_operation.traverse()
