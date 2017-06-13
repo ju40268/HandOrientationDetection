@@ -36,7 +36,7 @@ def calculate_vector(kmeans_centroids, num_cluster, touchpad_center):
 def write_angle(filename, slice_timestamp, index_list, angle_list):
     pair_dir = file_operation.data_output('pair')
     if not os.path.exists(pair_dir):
-        print 'No timestamp angle pair directory, now creating one.'
+        print('No timestamp angle pair directory, now creating one.')
         os.makedirs(pair_dir)
     _, tail = os.path.split(filename)
     # extract the .txt extend file name
@@ -73,7 +73,7 @@ def get_timestamp(header,time_stamp):
 def save_pickle(obj):
     pickle_dir = file_operation.data_output('pickle')
     if not os.path.exists(pickle_dir):
-        print 'No reference pickle output directory, now creating one.'
+        print('No reference pickle output directory, now creating one.')
         os.makedirs(pickle_dir)
     with open('ref.pickle', 'w') as f:  # Python 3: open(..., 'wb')
         pickle.dump(obj, f)
@@ -87,7 +87,7 @@ def load_ref(obj='ref.pickle'):
 def gradient():
     # https://math.stackexchange.com/questions/1394455/how-do-i-compute-the-gradient-vector-of-pixels-in-an-image
     #worth a try! calculate the gradient for the img
-    print 'calculating the gradient for the image...'
+    print('calculating the gradient for the image...')
 
 # -----------------------------------------------------------------
 # TODO: find better threshold for each
@@ -121,24 +121,24 @@ def kmeans_clustering(points):
 
 def save_img(img, index, filename):
     # print 'saving img ' + str(index)
-    img_dir = file_operation.data_output('img')
-    if not os.path.exists(img_dir):
-        print 'No contour img directory, now creating one.'
-        os.makedirs(img_dir)
+    filtered_dir = file_operation.data_output('filtered')
+    if not os.path.exists(filtered_dir):
+        print('No filtered img directory, now creating one.')
+        os.makedirs(filtered_dir)
     _, tail = os.path.split(filename)
     # extract the .txt extend file name
-    plt.imsave(img_dir + tail[:-4] + '_' + str(index) + '.jpg', img, cmap=plt.cm.GnBu)
+    plt.imsave(filtered_dir + tail[:-4] + '_' + str(index) + '.png', img, cmap=plt.cm.GnBu)
 
 #-----------------------------------------------------------------------------
 def determine_lift(index, blurred_img):
     if np.std(blurred_img) < 0.1: # threshold not yet finalized
-        print 'frame#', index, 'hands lifted'
+        print('frame#', index, 'hands lifted')
         return False
     else:
         return True
 
 #------------------------------------------------------------------------------
-def img_processing(img_list):
+def img_processing(img_list, filename):
     angle_list = []
     index_list = []
     for i in range(len(img_list)):
@@ -149,6 +149,7 @@ def img_processing(img_list):
         # points = threshold(np.transpose(np.flipud(filtered)).reshape(23, 28))
         index_list.append(i)
         if determine_lift(i, blurred_img):
+            save_img(np.transpose(np.flipud(blurred_img)).reshape(23, 28),i,filename)
             points = threshold(np.transpose(np.flipud(filtered)).reshape(23, 28))
             kmeans_centroids = kmeans_clustering(points)
             final_angle = calculate_vector(kmeans_centroids, 5, touchpad_center=[14,13])
@@ -158,7 +159,7 @@ def img_processing(img_list):
     return index_list, angle_list
 
 def detect_online(filename,img_list, data_numeric, num_frame, header, time_stamp):
-    print 'in detect'
-    index_list, angle_list = img_processing(img_list)
+    print('in detect')
+    index_list, angle_list = img_processing(img_list,filename)
     slice_timestamp = get_timestamp(header, time_stamp)
     write_angle(filename, slice_timestamp, index_list, angle_list)

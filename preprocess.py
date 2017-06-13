@@ -34,21 +34,25 @@ def gen_white_noise():
     #save_img(ref_frame, 0, 'white_noise')
     return white_noise
 
-def load_ref(obj='ref.pickle'):
-    with open(obj) as f:  # Python 3: open(..., 'rb')
-        ref_lsit = pickle.load(f)
-        # print ref_lsit
-    return  ref_lsit
+def load_ref():
+    with open('reserved_ref.pickle', 'rb') as f:
+        ref_list = pickle.load(f)
+    return  ref_list
+
+def save_pickle(obj):
+    with open('base_ref.pickle', 'wb') as f:
+        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+
 
 def save_img(img, index, filename):
     # print 'saving img ' + str(index)
     img_dir = file_operation.data_output('img')
     if not os.path.exists(img_dir):
-        print 'No contour img directory, now creating one.'
+        print('No contour img directory, now creating one.')
         os.makedirs(img_dir)
     _, tail = os.path.split(filename)
     # extract the .txt extend file name
-    plt.imsave(img_dir + tail[:-4] + '_' + str(index) + '.jpg', img, cmap=plt.cm.GnBu)
+    plt.imsave(img_dir + tail[:-4] + '_' + str(index) + '.png', img, cmap=plt.cm.GnBu)
 
 def save_csv(data_numeric, num_frame, filename):
     flat_data = []
@@ -57,14 +61,14 @@ def save_csv(data_numeric, num_frame, filename):
     csv_dir = file_operation.data_output('csv')
 
     if not os.path.exists(csv_dir):
-        print 'No csv directory, now creating one.'
+        print('No csv directory, now creating one.')
         os.makedirs(csv_dir)
     _, tail = os.path.split(filename)
     csv_name = csv_dir + tail[:-4] + '_' + 'difference_not_scale.csv'
 
     try:
-        with open(csv_name, 'wb') as f:
-            print f
+        with open(csv_name, 'w') as f:
+            # print f
             for i in range(len(data_numeric) - 1):
                 f.write('frame#'+str(i)+'\n')
                 array = np.transpose(np.flipud(flat_data[i])).reshape(23, 28)
@@ -72,16 +76,18 @@ def save_csv(data_numeric, num_frame, filename):
         f.close()
 
     except IOError:
-        print 'file still opening, in lock. Please close all the corresponding csv file'
+        print('file still opening, in lock. Please close all the corresponding csv file')
 
 # -----------------------------------------------------------------
 def gen_img(data_numeric, num_frame, filename, touchpad_center):
     flat_data = []
     img_list = []
+    #ref_list = load_ref()
+    save_pickle(cut_tail(data_numeric[0]))
     ref_list = load_ref()
     for i in range(1, len(data_numeric)):
         flat_data.append(cut_tail(data_numeric[i]) - ref_list)
-    print 'len for flat data', len(flat_data)
+    print('len for flat data', len(flat_data))
 
     for i in range(len(data_numeric) - 1):
         scaled_list = preprocessing.scale(flat_data[i])
@@ -106,23 +112,23 @@ def parse_data(df, line_num, header_padding):
     # skip the first line for command 00 31 00 --> +2
     starting_point = line_num[header_padding]
     ending_point = line_num[-2]
-    print 'starting point: ', starting_point
-    print 'ending point: ', ending_point
+    print('starting point: ', starting_point)
+    print('ending point: ', ending_point)
 
     num_frame = (len(line_num) - header_padding) / 2 - 1  # still skip the final frame in case not complete
-    for i in range(num_frame):
+    for i in range(int(num_frame)):
         # dealing with NaN first, sanity check.
         skipheader = line_num[header_padding + i * 2]
         full_data = df.iloc[skipheader + 2: skipheader + 164]
         if full_data.isnull().values.any():
-            print 'containing NaN in output signal at: ', skipheader
+            print('containing NaN in output signal at: ', skipheader)
             continue
         else:
             data = df.iloc[skipheader + 2: skipheader + 164: 2]
             frame_line.append(data.apply(lambda x: x.astype(str).map(lambda x: int(x, base=16))).as_matrix())
             header.append(skipheader)
 
-    print 'gather all the header: ', header
+    print('gather all the header: ', header)
     return  frame_line, num_frame, header
 
 
@@ -143,7 +149,7 @@ def read_file(filename, lookup):
             if lookup in line:
                 line_num.append(num)
 
-    print line_num
+    print(line_num)
     return pd.read_csv(filename, delim_whitespace=True, header=None, usecols=range(2)), pd.read_csv(filename, delim_whitespace=True, header=None, usecols=range(7, 23, 2)), line_num
 
 
@@ -153,11 +159,12 @@ def preprocess_online(filename, header_padding, touchpad_center):
     #TODO: check if there exist a fixed pattern for write command?
     time_stamp, df, line_num = read_file(filename, '11 03 0A 0F 31 00 00 00 00')
     if not line_num:
-        print 'list empty, try another lookup pattern'
+        print('list empty, try another lookup pattern')
         time_stamp, df, line_num = read_file(filename, '11 01 0A 0F 31 00 00 00 00')
     #-----------------------------------------------------------------------------
     data_numeric, num_frame, header = parse_data(df, line_num, header_padding)
-    save_csv(data_numeric, num_frame, filename)
     img_list = gen_img(data_numeric, num_frame, filename, touchpad_center)
+    save_csv(data_numeric, num_frame, filename)
+
 
     return filename, img_list, data_numeric, num_frame, header, time_stamp
