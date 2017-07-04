@@ -150,18 +150,27 @@ def read_file(filename, lookup):
                 line_num.append(num)
 
     print(line_num)
-    return pd.read_csv(filename, delim_whitespace=True, header=None, usecols=range(2)), pd.read_csv(filename, delim_whitespace=True, header=None, usecols=range(7, 23, 2)), line_num
+    time_stamp = pd.read_csv(filename, delim_whitespace=True, header=None, usecols=list(range(2)))
+    try:
+        df = pd.read_csv(filename, delim_whitespace=True, header=None, usecols=list(range(7,23,2)))
+    except ValueError:
+        df = pd.read_csv(filename, delim_whitespace=True, header=None, skiprows=1, usecols=list(range(7, 23, 2)))
+        print('first row error, not long enough!')
+    return time_stamp, df, line_num
 
 
 # -----------------------------------------------------------------
 # TODO: filter out the abnormal frames
 def preprocess_online(filename, header_padding, touchpad_center):
     #TODO: check if there exist a fixed pattern for write command?
-    time_stamp, df, line_num = read_file(filename, '11 03 0A 0F 31 00 00 00 00')
-    if not line_num:
-        print('list empty, try another lookup pattern')
-        time_stamp, df, line_num = read_file(filename, '11 01 0A 0F 31 00 00 00 00')
+    #time_stamp, df, line_num = read_file(filename, '11 03 0A 0F 31 00 00 00 00')
+    #if not line_num:
+    #    print('list empty, try another lookup pattern')
+    #    time_stamp, df, line_num = read_file(filename, '11 01 0A 0F 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ')
     #-----------------------------------------------------------------------------
+
+    time_stamp, df, line_num = read_file(filename, '11 01 0A 0F 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00')
+
     data_numeric, num_frame, header = parse_data(df, line_num, header_padding)
     img_list = gen_img(data_numeric, num_frame, filename, touchpad_center)
     save_csv(data_numeric, num_frame, filename)
