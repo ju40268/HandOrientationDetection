@@ -18,7 +18,7 @@ TODO:
 '''
 
 if __name__ == "__main__":
-    f = file_operation.pwd() + 'Output.txt'
+    f = file_operation.pwd() + 'Output_4_w_thumb.txt'
     # file_operation.img_output()
     filename, img_list, data_numeric, num_frame, header, time_stamp = preprocess.preprocess_online(f, header_padding=0, touchpad_center=[14, 13])
     detect.detect_online(filename,img_list, data_numeric, num_frame, header, time_stamp)
