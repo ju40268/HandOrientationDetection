@@ -161,6 +161,8 @@ def img_processing(img_list, filename):
             angle_list.append(final_angle)
         else:
             angle_list.append('hand lifted')
+
+    # store all the point
     with open('4_points.pickle', 'wb') as f:  # Python 3: open(..., 'wb')
         pickle.dump(points_list, f)
     return index_list, angle_list
