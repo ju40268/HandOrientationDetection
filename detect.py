@@ -36,7 +36,7 @@ def calculate_vector(kmeans_centroids, num_cluster, touchpad_center):
 def write_angle(filename, slice_timestamp, index_list, angle_list):
     pair_dir = file_operation.data_output('pair')
     if not os.path.exists(pair_dir):
-        print('No timestamp angle pair directory, now creating one.')
+        print 'No timestamp angle pair directory, now creating one.'
         os.makedirs(pair_dir)
     _, tail = os.path.split(filename)
     # extract the .txt extend file name
@@ -73,7 +73,7 @@ def get_timestamp(header,time_stamp):
 def save_pickle(obj):
     pickle_dir = file_operation.data_output('pickle')
     if not os.path.exists(pickle_dir):
-        print('No reference pickle output directory, now creating one.')
+        print 'No reference pickle output directory, now creating one.'
         os.makedirs(pickle_dir)
     with open('ref.pickle', 'w') as f:  # Python 3: open(..., 'wb')
         pickle.dump(obj, f)
@@ -87,7 +87,7 @@ def load_ref(obj='ref.pickle'):
 def gradient():
     # https://math.stackexchange.com/questions/1394455/how-do-i-compute-the-gradient-vector-of-pixels-in-an-image
     #worth a try! calculate the gradient for the img
-    print('calculating the gradient for the image...')
+    print 'calculating the gradient for the image...'
 
 # -----------------------------------------------------------------
 # TODO: find better threshold for each
@@ -101,6 +101,16 @@ def threshold(threshold_output):
     # plt.show()
     return points
 
+def threshold2(threshold_output): # for palm-on cases
+    label_x, label_y = np.where(threshold_output < -0.5)
+    points = list(zip(label_y, 23 - label_x))
+    # the transformation of coordinate from upper-left to lower-left
+    #plt.scatter(label_y, 23 - label_x)
+    #plt.show()
+    #plt.imshow(threshold_output, interpolation = 'nearest')
+    #plt.show()
+    return points
+
 # -----------------------------------------------------------------
 # TODO: not decide if the total # of cluster is not enough
 def kmeans_clustering(points):
@@ -112,22 +122,22 @@ def kmeans_clustering(points):
     colors = ["g.", "r.", "b.", "y.", "m."]
     for i in range(len(labels)):
         plt.plot(points[i][0], points[i][1], colors[labels[i]], markersize=10)
-        plt.scatter(centroids[:, 0], centroids[:, 1], marker="x", s=150, linewidths=5, zorder=10)
-        plt.show()
-        print 'centroids, x,y coordinates: ', centroids
+    plt.scatter(centroids[:, 0], centroids[:, 1], marker="x", s=150, linewidths=5, zorder=10)
+    plt.show()
+    print 'centroids, x,y coordinates: ', centroids
     '''
     return centroids
 
 
 def save_img(img, index, filename):
     # print 'saving img ' + str(index)
-    filtered_dir = file_operation.data_output('filtered')
-    if not os.path.exists(filtered_dir):
-        print('No filtered img directory, now creating one.')
-        os.makedirs(filtered_dir)
+    img_dir = file_operation.data_output('img')
+    if not os.path.exists(img_dir):
+        print 'No contour img directory, now creating one.'
+        os.makedirs(img_dir)
     _, tail = os.path.split(filename)
     # extract the .txt extend file name
-    plt.imsave(filtered_dir + tail[:-4] + '_' + str(index) + '.png', img, cmap=plt.cm.GnBu)
+    plt.imsave(img_dir + tail[:-4] + '_' + str(index) + '.jpg', img, cmap=plt.cm.GnBu)
 
 #-----------------------------------------------------------------------------
 def determine_lift(index, blurred_img):
@@ -138,7 +148,50 @@ def determine_lift(index, blurred_img):
         return True
 
 #------------------------------------------------------------------------------
-def img_processing(img_list, filename):
+def distance(point1, point2):
+    return np.sqrt((point1[0]-point2[0])**2+(point1[1]-point2[1])**2)
+#------------------------------------------------------------------------------
+def most(img, box_size):
+    max_x = 0
+    max_y = 0
+    mmax = 0
+    for x in range(img.shape[0]-box_size[0]):
+        for y in range(img.shape[1]-box_size[1]):
+            if np.sum(img[x:x+box_size[0],y:y+box_size[1]])> mmax:
+                mmax = np.sum(img[x:x+box_size[0],y:y+box_size[1]])
+                max_x = x+int(box_size[0]/2)+1
+                max_y = y+int(box_size[1]/2)+1
+    return np.array([max_x, max_y])
+#------------------------------------------------------------------------------
+def remove_palm(img_ori):
+    scale = 4 # resize scale
+    img =ndimage.zoom(img_ori, scale, order=3) # interpolation: cubic
+    img = ndimage.grey_dilation(img, size=(int(scale/2), int(scale/2)))
+    img = (img < np.mean(img))*1
+
+    box_size = [int((img.shape[0]+img.shape[1])/8),int((img.shape[0]+img.shape[1])/8)] # to be determined
+    palmrt = most(img, box_size) # right-top corner of palm
+    img[palmrt[0]-int(box_size[0]/2)+1:palmrt[0]+int(box_size[0]/2), palmrt[1]-int(box_size[1]/2)+1:palmrt[1]+int(box_size[1]/2)] = 0
+    palmlb = most(img, box_size) # left-bottom corner of palm
+    # ----brute force for checking----
+    if distance(palmrt,palmlb) > 12*scale: # would be wrong if too far away, try again
+        img[palmlb[0]-int(box_size[0]/2)+1:palmlb[0]+int(box_size[0]/2), palmlb[1]-int(box_size[1]/2)+1:palmlb[1]+int(box_size[1]/2)] = 0
+        palmlb = most(img, box_size)
+        if distance(palmrt,palmlb) > 12*scale: # would be wrong if too far away, try again
+            img[palmlb[0]-int(box_size[0]/2)+1:palmlb[0]+int(box_size[0]/2), palmlb[1]-int(box_size[1]/2)+1:palmlb[1]+int(box_size[1]/2)] = 0
+            palmlb = most(img, box_size)
+    #----------------------------------
+    palmrt = palmrt/scale
+    palmlb = palmlb/scale	
+    center = ( palmrt*3 + palmlb ) / 4 # to be determined
+    for x in range(23):
+        for y in range(28):
+            if distance([x,y],center)<12: # radius to be determined
+                img_ori[x,y] = 1
+
+    return img_ori
+#------------------------------------------------------------------------------
+def img_processing(img_list):
     angle_list = []
     index_list = []
     points_list = []
@@ -151,13 +204,11 @@ def img_processing(img_list, filename):
         index_list.append(i)
         print(np.std(blurred_img))
         if determine_lift(i, blurred_img):
-            save_img(np.transpose(np.flipud(blurred_img)).reshape(23, 28),i,filename)
             points = threshold(np.transpose(np.flipud(filtered)).reshape(23, 28))
             points_list.append(points)
             # here for the calculating the clustering!!!! and different methods
             kmeans_centroids = kmeans_clustering(points)
             final_angle = calculate_vector(kmeans_centroids, 5, touchpad_center=[14,13])
-
             angle_list.append(final_angle)
         else:
             angle_list.append('hand lifted')
@@ -168,7 +219,7 @@ def img_processing(img_list, filename):
     return index_list, angle_list
 
 def detect_online(filename,img_list, data_numeric, num_frame, header, time_stamp):
-    print('in detect')
-    index_list, angle_list = img_processing(img_list,filename)
+    print 'in detect'
+    index_list, angle_list = img_processing(img_list)
     slice_timestamp = get_timestamp(header, time_stamp)
     write_angle(filename, slice_timestamp, index_list, angle_list)
