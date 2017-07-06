@@ -64,7 +64,7 @@ def save_csv(data_numeric, num_frame, filename):
         print('No csv directory, now creating one.')
         os.makedirs(csv_dir)
     _, tail = os.path.split(filename)
-    csv_name = csv_dir + tail[:-4] + '_' + 'difference_not_scale.csv'
+    csv_name = csv_dir + tail[:-4] + '_' + 'difference.csv'
 
     try:
         with open(csv_name, 'w') as f:

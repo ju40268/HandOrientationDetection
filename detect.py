@@ -9,6 +9,29 @@ from scipy import ndimage
 import numpy as np
 import matplotlib.pyplot as plt
 import csv
+from math import acos
+from math import sqrt
+from math import pi
+
+#--------------------------------------------------------------------------------
+#for representing the final angle around [0-350 counter-clock wise]
+def length(v):
+    return sqrt(v[0]**2+v[1]**2)
+def dot_product(v,w):
+   return v[0]*w[0]+v[1]*w[1]
+def determinant(v,w):
+   return v[0]*w[1]-v[1]*w[0]
+def inner_angle(v,w):
+   cosx=dot_product(v,w)/(length(v)*length(w))
+   rad=acos(cosx) # in radians
+   return rad*180/pi # returns degrees
+def angle_counter_clockwise(A, B):
+    inner=inner_angle(A,B)
+    det = determinant(A,B)
+    if det<0: #this is a property of the det. If the det < 0 then B is clockwise of A
+        return 360-inner
+    else: # if the det > 0 then A is immediately clockwise of B
+        return inner
 #---------------------------------------------------------------------------------
 def angle_between(v1, v2):
     v1_u = v1 / np.linalg.norm(v1)
@@ -17,7 +40,12 @@ def angle_between(v1, v2):
 #---------------------------------------------------------------------------------
 def calculate_vector(kmeans_centroids, num_cluster, touchpad_center):
     degree = []
-    relative_vector = list(kmeans_centroids - touchpad_center)
+    degree_counter = []
+    relative_vector = []
+    temp_vector = list(kmeans_centroids - touchpad_center)
+    #normalize all vector to unit vector
+    for v in temp_vector:
+        relative_vector.append(v / np.linalg.norm(v))
     all_comb = list(itertools.combinations(range(num_cluster), 2))
     for i, j in all_comb:
         degree.append(np.degrees(angle_between(relative_vector[i], relative_vector[j])))
@@ -27,9 +55,12 @@ def calculate_vector(kmeans_centroids, num_cluster, touchpad_center):
 
     for i in index:
         del relative_vector[i]
+    #print('relative vector: ')
+    #print(relative_vector)
     final_direction = sum(relative_vector) / 3
     positive_x_axis = (1, 0)
-    final_angle = angle_between(positive_x_axis, final_direction)
+    final_angle = angle_counter_clockwise(positive_x_axis, final_direction)
+    print(int(final_angle))
     return np.degrees(final_angle)
 
 #---------------------------------------------------------------------------------
