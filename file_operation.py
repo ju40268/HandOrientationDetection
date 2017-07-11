@@ -3,7 +3,7 @@ import os
 from os.path import expanduser
 
 source = 'D:/CDSoft/Temp/devio/build/Bazinga/'
-destination = os.getcwd() + '/hand_raw_data/'
+destination = os.getcwd() + '\\raw_HID_output\\'
 #current worling directory + hand_raw_data
 
 def move(filename='Output.txt'):

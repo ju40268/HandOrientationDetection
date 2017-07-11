@@ -142,8 +142,8 @@ def save_img(img, index, filename):
 
 #-----------------------------------------------------------------------------
 def determine_lift(index, blurred_img):
-    if np.std(blurred_img) < 0.1: # threshold not yet finalized
-        print 'frame#', index, 'hands lifted'
+    if np.std(blurred_img) < 0.1 or np.std(blurred_img) > 0.2: # threshold not yet finalized
+        print('frame#', index, 'hands lifted')
         return False
     else:
         return True
@@ -218,6 +218,7 @@ def palm_angle(img_ori):
 def img_processing(img_list):
     angle_list = []
     index_list = []
+    points_list = []
     for i in range(len(img_list)):
         blurred_img = ndimage.gaussian_filter(img_list[i], sigma=0.8)
         filtered = [0 if x < np.mean(blurred_img) - np.std(blurred_img) else 1 for x in blurred_img]
@@ -225,19 +226,24 @@ def img_processing(img_list):
         # save_img(np.transpose(np.flipud(filtered)).reshape(23, 28), i, filename='binary_____')
         # points = threshold(np.transpose(np.flipud(filtered)).reshape(23, 28))
         index_list.append(i)
+        print(np.std(blurred_img))
         if determine_lift(i, blurred_img):
             points = threshold(np.transpose(np.flipud(filtered)).reshape(23, 28))
             if len(points)<100: # finger only
-                print len(points),"finger only"
+                print(len(points),"finger only")
                 kmeans_centroids = kmeans_clustering(points)
                 final_angle = calculate_vector(kmeans_centroids, 5, touchpad_center=[14,13])
                 angle_list.append([final_angle,"finger only"])
             else: # palm on
-                print len(points),i, "palm on"
+                print(len(points),i, "palm on")
                 angle = palm_angle(np.transpose(np.flipud(img_list[i])).reshape(23, 28))
                 angle_list.append([angle,"palm on"])
         else:
             angle_list.append('hand lifted')
+
+    # store all the point
+    with open('4_points_thumb.pickle', 'wb') as f:  # Python 3: open(..., 'wb')
+        pickle.dump(points_list, f)
     return index_list, angle_list
 
 def detect_online(filename,img_list, data_numeric, num_frame, header, time_stamp):
