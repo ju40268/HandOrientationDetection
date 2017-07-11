@@ -9,6 +9,7 @@ from scipy import ndimage
 import numpy as np
 import matplotlib.pyplot as plt
 import csv
+import math
 #---------------------------------------------------------------------------------
 def angle_between(v1, v2):
     v1_u = v1 / np.linalg.norm(v1)
@@ -101,7 +102,7 @@ def threshold(threshold_output):
     # plt.show()
     return points
 
-def threshold2(threshold_output): # for palm-on cases
+def threshold2(threshold_output):
     label_x, label_y = np.where(threshold_output < -0.5)
     points = list(zip(label_y, 23 - label_x))
     # the transformation of coordinate from upper-left to lower-left
@@ -150,46 +151,69 @@ def determine_lift(index, blurred_img):
 #------------------------------------------------------------------------------
 def distance(point1, point2):
     return np.sqrt((point1[0]-point2[0])**2+(point1[1]-point2[1])**2)
-#------------------------------------------------------------------------------
-def most(img, box_size):
-    max_x = 0
-    max_y = 0
-    mmax = 0
-    for x in range(img.shape[0]-box_size[0]):
-        for y in range(img.shape[1]-box_size[1]):
-            if np.sum(img[x:x+box_size[0],y:y+box_size[1]])> mmax:
-                mmax = np.sum(img[x:x+box_size[0],y:y+box_size[1]])
-                max_x = x+int(box_size[0]/2)+1
-                max_y = y+int(box_size[1]/2)+1
-    return np.array([max_x, max_y])
-#------------------------------------------------------------------------------
-def remove_palm(img_ori):
-    scale = 4 # resize scale
-    img =ndimage.zoom(img_ori, scale, order=3) # interpolation: cubic
-    img = ndimage.grey_dilation(img, size=(int(scale/2), int(scale/2)))
-    img = (img < np.mean(img))*1
 
-    box_size = [int((img.shape[0]+img.shape[1])/8),int((img.shape[0]+img.shape[1])/8)] # to be determined
-    palmrt = most(img, box_size) # right-top corner of palm
-    img[palmrt[0]-int(box_size[0]/2)+1:palmrt[0]+int(box_size[0]/2), palmrt[1]-int(box_size[1]/2)+1:palmrt[1]+int(box_size[1]/2)] = 0
-    palmlb = most(img, box_size) # left-bottom corner of palm
-    # ----brute force for checking----
-    if distance(palmrt,palmlb) > 12*scale: # would be wrong if too far away, try again
-        img[palmlb[0]-int(box_size[0]/2)+1:palmlb[0]+int(box_size[0]/2), palmlb[1]-int(box_size[1]/2)+1:palmlb[1]+int(box_size[1]/2)] = 0
-        palmlb = most(img, box_size)
-        if distance(palmrt,palmlb) > 12*scale: # would be wrong if too far away, try again
-            img[palmlb[0]-int(box_size[0]/2)+1:palmlb[0]+int(box_size[0]/2), palmlb[1]-int(box_size[1]/2)+1:palmlb[1]+int(box_size[1]/2)] = 0
-            palmlb = most(img, box_size)
-    #----------------------------------
-    palmrt = palmrt/scale
-    palmlb = palmlb/scale	
-    center = ( palmrt*3 + palmlb ) / 4 # to be determined
-    for x in range(23):
-        for y in range(28):
-            if distance([x,y],center)<12: # radius to be determined
-                img_ori[x,y] = 1
-
-    return img_ori
+#------------------------------------------------------------------------------
+def palm_angle(img_ori):
+    scale = 4 	# resize scale
+    img =ndimage.zoom(img_ori, scale, order=3) 	# interpolation: cubic
+    img = ndimage.gaussian_filter(img, sigma=5)
+    img = ndimage.grey_erosion(img, size=(int(scale/2), int(scale/2)))
+    
+	# use x and y gradient to determine angle of each pixel
+    PI = 3.1415926
+    sx = ndimage.sobel(img, axis=0, mode='constant') 
+    sy = ndimage.sobel(img, axis=1, mode='constant') 
+    grad = np.arctan(sy/(sx + 1E-10)) 	# [-pi/2, pi/2] 
+    grad = ((sx<0) * PI +(sx>0)*(sy<0)*2*PI ) + grad 	# to 2pi scope
+    grad = (grad>PI)*(-2*PI) + grad 					# to 2pi scope
+    grad = grad/PI*180	# to degree
+	
+	### ------- build histogram --------###
+    deg_interval = 5 	#related to number of bins, to be determined
+    hist, bins = np.histogram(grad,bins= 360/deg_interval)
+    bins=np.array(range(0,360,deg_interval))-180 	# -180 ~ 180 degrees
+    threshold = np.mean(hist)+0.5*np.std(hist) 	# to be determined
+    offset = 90 - bins[np.argmax(hist)] 	# aiming 90 degree to one peak,
+    bins = bins + offset					# to avoid the gap btw +-180.
+    bins = (bins > 180)*(-360) + bins		# handle degree out of range
+    bins = (bins < -180)*(360) + bins
+    hist_neg = hist*(bins<=0)
+    hist_pos = hist*(bins>0)
+    bins_neg = bins*(bins<=0)
+    bins_pos = bins*(bins>0)
+    angle_neg = np.sum((hist_neg > threshold) * hist_neg * bins_neg )/np.sum((hist_neg > threshold) * hist_neg)
+    angle_pos = np.sum((hist_pos > threshold) * hist_pos * bins_pos )/np.sum((hist_pos > threshold) * hist_pos)
+    angle_neg = angle_neg - offset	# one of these two is the final answer!
+    angle_pos = angle_pos - offset 
+	  # transform to the range of +-180
+    if angle_neg > 180:
+       angle_neg = angle_neg - 360
+    elif angle_neg<-180:
+       angle_neg = angle_neg + 360 
+    if angle_pos > 180:
+       angle_pos = angle_pos - 360
+    elif angle_pos<-180:
+       angle_pos = angle_pos + 360 
+      #---------
+	# assuming two circles based on the two angles, the one contains larger sum should be position of palm?
+    pad_center = [14,13]
+    dist = 6	# not sure
+    cen_pos = [pad_center[0]*scale+int(dist*scale*math.cos(angle_pos/180.0*PI)),pad_center[1]*scale+int(dist*scale*math.sin(angle_pos/180.0*PI))]
+    cen_neg = [pad_center[0]*scale+int(dist*scale*math.cos(angle_neg/180.0*PI)),pad_center[1]*scale+int(dist*scale*math.sin(angle_neg/180.0*PI))]
+    score_pos = 0
+    score_neg = 0
+    radius = 5	# just guessing
+    for w in range(img.shape[0]):
+        for h in range(img.shape[1]):
+            if distance(cen_pos,[w,h])<radius*scale:
+                score_pos+=img[w,h]
+            elif distance(cen_neg,[w,h])<radius*scale:
+                score_neg+=img[w,h]
+    angle = angle_neg if score_neg>score_pos else angle_pos # final angle
+    print "degree: ", angle
+    #plt.hist(grad.reshape(1,-1)[0],bins= 360/deg_interval)
+    #plt.show()
+    return img_ori, angle
 #------------------------------------------------------------------------------
 def img_processing(img_list):
     angle_list = []
@@ -209,12 +233,9 @@ def img_processing(img_list):
                 final_angle = calculate_vector(kmeans_centroids, 5, touchpad_center=[14,13])
                 angle_list.append([final_angle,"finger only"])
             else: # palm on
-                print len(points), "palm on"
-                no_palm = remove_palm(np.transpose(np.flipud(img_list[i])).reshape(23, 28))
-                points = threshold2(no_palm)
-                kmeans_centroids = kmeans_clustering(points)
-                final_angle = calculate_vector(kmeans_centroids, 5, touchpad_center=[14,13])
-                angle_list.append([final_angle,"palm on"])
+                print len(points),i, "palm on"
+                angle = palm_angle(np.transpose(np.flipud(img_list[i])).reshape(23, 28))
+                angle_list.append([angle,"palm on"])
         else:
             angle_list.append('hand lifted')
     return index_list, angle_list
