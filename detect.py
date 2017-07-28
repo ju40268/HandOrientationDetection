@@ -142,8 +142,8 @@ def save_img(img, index, filename):
 
 #-----------------------------------------------------------------------------
 def determine_lift(index, blurred_img):
-    if np.std(blurred_img) < 0.1 or np.std(blurred_img) > 0.2: # threshold not yet finalized
-        print('frame#', index, 'hands lifted')
+    if np.std(blurred_img) < 0.1: # threshold not yet finalized
+        print 'frame#', index, 'hands lifted'
         return False
     else:
         return True
@@ -151,6 +151,18 @@ def determine_lift(index, blurred_img):
 #------------------------------------------------------------------------------
 def distance(point1, point2):
     return np.sqrt((point1[0]-point2[0])**2+(point1[1]-point2[1])**2)
+#------------------------------------------------------------------------------
+def line_graph(angle, size):
+    center = [int(size[0]/2), int(size[1]/2)]
+    line = np.zeros(size)
+    leg = 0
+    while(abs(int(math.sin(angle)*leg)) < int(size[0]/2) and \
+          abs(int(math.cos(angle)*leg)) < int(size[1]/2) ):
+        line[center[0]-int(math.sin(angle)*leg),center[1]+int(math.cos(angle)*leg)] = 1
+        #line[center[0]+int(math.sin(angle)*leg),center[1]-int(math.cos(angle)*leg)] = 1
+        leg = leg+1
+    return line
+    
 
 #------------------------------------------------------------------------------
 def palm_angle(img_ori):
@@ -158,23 +170,22 @@ def palm_angle(img_ori):
     img =ndimage.zoom(img_ori, scale, order=3) 	# interpolation: cubic
     img = ndimage.gaussian_filter(img, sigma=5)
     img = ndimage.grey_erosion(img, size=(int(scale/2), int(scale/2)))
-    
-	# use x and y gradient to determine angle of each pixel
+
+    # use x and y gradient to determine angle of each pixel
     PI = 3.1415926
     sx = ndimage.sobel(img, axis=0, mode='constant') 
     sy = ndimage.sobel(img, axis=1, mode='constant') 
     grad = np.arctan(sy/(sx + 1E-10)) 	# [-pi/2, pi/2] 
-    grad = ((sx<0) * PI +(sx>0)*(sy<0)*2*PI ) + grad 	# to 2pi scope
-    grad = (grad>PI)*(-2*PI) + grad 					# to 2pi scope
-    grad = grad/PI*180	# to degree
-	
-	### ------- build histogram --------###
+    grad = ((sx<0) * PI +(sx>0)*(sy<0)*2*PI ) + grad    # to 2pi scope
+    grad = (grad>PI)*(-2*PI) + grad                     # to 2pi scope
+    grad = grad/PI*180	# to degree	
+    ### ------- build histogram --------###
     deg_interval = 5 	#related to number of bins, to be determined
     hist, bins = np.histogram(grad,bins= 360/deg_interval)
     bins=np.array(range(0,360,deg_interval))-180 	# -180 ~ 180 degrees
     threshold = np.mean(hist)+0.5*np.std(hist) 	# to be determined
     offset = 90 - bins[np.argmax(hist)] 	# aiming 90 degree to one peak,
-    bins = bins + offset					# to avoid the gap btw +-180.
+    bins = bins + offset			# to avoid the gap btw +-180.
     bins = (bins > 180)*(-360) + bins		# handle degree out of range
     bins = (bins < -180)*(360) + bins
     hist_neg = hist*(bins<=0)
@@ -185,7 +196,7 @@ def palm_angle(img_ori):
     angle_pos = np.sum((hist_pos > threshold) * hist_pos * bins_pos )/np.sum((hist_pos > threshold) * hist_pos)
     angle_neg = angle_neg - offset	# one of these two is the final answer!
     angle_pos = angle_pos - offset 
-	  # transform to the range of +-180
+    # transform to the range of +-180
     if angle_neg > 180:
        angle_neg = angle_neg - 360
     elif angle_neg<-180:
@@ -194,31 +205,61 @@ def palm_angle(img_ori):
        angle_pos = angle_pos - 360
     elif angle_pos<-180:
        angle_pos = angle_pos + 360 
-      #---------
-	# assuming two circles based on the two angles, the one contains larger sum should be position of palm?
+    #---------
+
+    # assuming two circles based on the two angles, the one contains larger sum should be position of palm?
     pad_center = [14,13]
-    dist = 6	# not sure
-    cen_pos = [pad_center[0]*scale+int(dist*scale*math.cos(angle_pos/180.0*PI)),pad_center[1]*scale+int(dist*scale*math.sin(angle_pos/180.0*PI))]
-    cen_neg = [pad_center[0]*scale+int(dist*scale*math.cos(angle_neg/180.0*PI)),pad_center[1]*scale+int(dist*scale*math.sin(angle_neg/180.0*PI))]
+    dist = 7	# not sure
+    cen_pos = [pad_center[0]*scale-int(dist*scale*math.sin(angle_pos/180.0*PI)),pad_center[1]*scale+int(dist*scale*math.cos(angle_pos/180.0*PI))]
+    cen_neg = [pad_center[0]*scale-int(dist*scale*math.sin(angle_neg/180.0*PI)),pad_center[1]*scale+int(dist*scale*math.cos(angle_neg/180.0*PI))]
     score_pos = 0
     score_neg = 0
-    radius = 5	# just guessing
+    radius = 5	# not sure
     for w in range(img.shape[0]):
         for h in range(img.shape[1]):
             if distance(cen_pos,[w,h])<radius*scale:
-                score_pos+=img[w,h]
+                if img[w,h]> np.mean(img):
+                    score_pos+=1
             elif distance(cen_neg,[w,h])<radius*scale:
-                score_neg+=img[w,h]
+                if img[w,h] > np.mean(img):
+                    score_neg+=1
     angle = angle_neg if score_neg>score_pos else angle_pos # final angle
     print "degree: ", angle
+    ## draw lines according to the angle
+    line = line_graph((angle_neg)/180.0*PI,[img.shape[0], img.shape[1]])+line_graph((angle_pos)/180.0*PI,[img.shape[0], img.shape[1]])
+    ## show histogram!
     #plt.hist(grad.reshape(1,-1)[0],bins= 360/deg_interval)
     #plt.show()
-    return img_ori, angle
+	
+    '''# to remove a oval on the palm (not useful actually)  
+    center = cen_pos if score_neg>score_pos else cen_neg
+    oval_dist = 10
+    oval_cen1 = [center[0]-int(oval_dist*scale*math.sin(angle_pos/180.0*PI)), center[1]+int(oval_dist*scale*math.cos(angle_pos/180.0*PI))]
+    oval_cen2 = [center[0]-int(oval_dist*scale*math.sin(angle_neg/180.0*PI)), center[1]+int(oval_dist*scale*math.cos(angle_neg/180.0*PI))]
+
+    grad1=[]
+    trivial = np.mean(img)
+    for x in range(23*scale):
+        for y in range(28*scale):
+            #if distance([x,y],center)<12*scale: # radius to be determined
+            if ((distance([x,y], oval_cen1) + distance([x,y], oval_cen2)) <oval_dist*3.5*scale):
+                img[x,y] = trivial'''
+    #plt.imshow(img+line, interpolation = 'nearest')
+    #plt.show()	
+    img =ndimage.zoom(img, 1.0/scale, order=3)
+    return img, angle
+#------------------------------------------------------------------------------
+def boundary(array, lim):
+    for i in range(len(array)):
+        if array[i] < lim[i][0] :
+            array[i] = lim[i][0]
+        if array[i] > lim[i][1]-1 :
+            array[i] = lim[i][1]-1
+    return array
 #------------------------------------------------------------------------------
 def img_processing(img_list):
     angle_list = []
     index_list = []
-    points_list = []
     for i in range(len(img_list)):
         blurred_img = ndimage.gaussian_filter(img_list[i], sigma=0.8)
         filtered = [0 if x < np.mean(blurred_img) - np.std(blurred_img) else 1 for x in blurred_img]
@@ -226,24 +267,19 @@ def img_processing(img_list):
         # save_img(np.transpose(np.flipud(filtered)).reshape(23, 28), i, filename='binary_____')
         # points = threshold(np.transpose(np.flipud(filtered)).reshape(23, 28))
         index_list.append(i)
-        print(np.std(blurred_img))
         if determine_lift(i, blurred_img):
             points = threshold(np.transpose(np.flipud(filtered)).reshape(23, 28))
             if len(points)<100: # finger only
-                print(len(points),"finger only")
+                print len(points),"finger only"
                 kmeans_centroids = kmeans_clustering(points)
                 final_angle = calculate_vector(kmeans_centroids, 5, touchpad_center=[14,13])
                 angle_list.append([final_angle,"finger only"])
             else: # palm on
-                print(len(points),i, "palm on")
-                angle = palm_angle(np.transpose(np.flipud(img_list[i])).reshape(23, 28))
+                print len(points),i, "palm on"
+                no_palm, angle = palm_angle(np.transpose(np.flipud(img_list[i])).reshape(23, 28))
                 angle_list.append([angle,"palm on"])
         else:
             angle_list.append('hand lifted')
-
-    # store all the point
-    with open('4_points_thumb.pickle', 'wb') as f:  # Python 3: open(..., 'wb')
-        pickle.dump(points_list, f)
     return index_list, angle_list
 
 def detect_online(filename,img_list, data_numeric, num_frame, header, time_stamp):
